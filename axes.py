@@ -18,14 +18,14 @@ class AxesXY:
         height = self.canvas.winfo_height()
 
         self.arrow_Y = self.canvas.create_arrow(
-            width // 2, height,
-            width // 2, 0,
+            50, height,
+            50, 20,
             fill='black'
         )
 
         self.arrow_X = self.canvas.create_arrow(
-            0, height // 2,
-            width, height // 2,
+            0, height - 50,
+            width - 20, height - 50,
             fill='black'
         )
 

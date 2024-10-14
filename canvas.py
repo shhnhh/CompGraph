@@ -63,8 +63,10 @@ class CustomCanvas(Canvas):
         length = int(np.linalg.norm(v))
         n = length // interval
 
-        for i in range(1, n // 2):
-            point = center + e * i * interval
+        zero = np.array([x1, y1]) + e * 50
+
+        for i in range(1, n - 1):
+            point = zero + e * i * interval
 
             line = self.create_line(
                 *point, *(point + 5 * e), 
@@ -80,26 +82,6 @@ class CustomCanvas(Canvas):
             self.create_text(
                 *(point + v * 3), 
                 text=f'{i}',
-                tag=f'markup{id_arrow}'
-            )
-
-        for i in range(1, n // 2):
-            point = center - e * i * interval
-            
-            line = self.create_line(
-                *point, *(point + 5 * e), 
-                fill='red',
-                tag=f'markup{id_arrow}'
-            )
-            
-            self.rotate(line, point, np.pi / 2 * place)
-
-            x1, y1, x2, y2 = self.coords(line)
-            v = np.array([x2 - x1, y2 - y1])
-
-            self.create_text(
-                *(point + v * 3), 
-                text=f'{-i}',
                 tag=f'markup{id_arrow}'
             )
     
