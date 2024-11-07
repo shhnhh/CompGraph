@@ -1,8 +1,7 @@
 from tkinter import *
 from tkinter import ttk
-from scipy import interpolate
+from random import randint
 import numpy as np
-import bisect
 
 from canvas import CustomCanvas
 from axes import AxesXY
@@ -14,9 +13,6 @@ class App(Tk):
 
         self.width = 1000
         self.height = 800
-        self.id_curve = None
-        self.id_spline = None
-        self.bc_type = StringVar(self, value='natural')
         self.tool = StringVar(self)
         self.prev = None
 
@@ -25,47 +21,53 @@ class App(Tk):
         self.geometry(f'{self.width}x{self.height}')
         ttk.Style().theme_use('clam')
 
-        self.grid_rowconfigure(1, weight=1)
-        for i in range(4): self.grid_columnconfigure(i, weight=1)
+        toolbar = ttk.Frame(self)
+        toolbar.pack(side=TOP, fill=X)
 
         ttk.Radiobutton(
-            self, 
-            text='Нарисовать',
+            toolbar, 
+            text='Нарисовать отрезок',
             variable=self.tool,
             value='draw',
             style='Toolbutton'
-        ).grid(row=0, column=0)
+        ).pack(side=LEFT)
 
-        self.combobox = ttk.Combobox(
-            self,
-            values=('Жесткие', 'Мягкие', 'Циклические', 'Ациклические'),
-            state='readonly')
-        self.combobox.grid(row=0, column=1)
+        ttk.Separator(toolbar, orient=VERTICAL).pack(side=LEFT, fill=Y)
 
         ttk.Button(
-            self, 
+            toolbar, 
+            text='Случайный отрезок',
+            style='Toolbutton',
+            command=self.rand
+        ).pack(side=LEFT)
+
+        ttk.Separator(toolbar, orient=VERTICAL).pack(side=LEFT, fill=Y)
+
+        ttk.Button(
+            toolbar, 
             text='Очистить',
             style='Toolbutton',
             command=self.clear
-        ).grid(row=0, column=2)
+        ).pack(side=LEFT)
+
+        ttk.Separator(toolbar, orient=VERTICAL).pack(side=LEFT, fill=Y)
 
         ttk.Radiobutton(
-            self, 
-            text='Редактироавние',
+            toolbar, 
+            text='Нарисовать рамку',
             variable=self.tool,
-            value='edit',
+            value='rect',
             style='Toolbutton'
-        ).grid(row=0, column=3)
+        ).pack(side=LEFT)
+
+        ttk.Separator(toolbar, orient=VERTICAL).pack(side=LEFT, fill=Y)
 
         self.canvas = CustomCanvas(self, bg='white')
-        self.canvas.grid(row=1, column=0, columnspan=5, sticky=NSEW)
+        self.canvas.pack(side=BOTTOM, fill=BOTH, expand=True)
 
         self.axes = AxesXY(self.canvas)
 
         self.canvas.bind('<Configure>', self.redraw)
-        self.combobox.bind("<<ComboboxSelected>>", self.set_bc_type)
-
-        self.combobox.set('Жесткие')
 
     def redraw(self, event):
         self.update_idletasks()
@@ -86,163 +88,137 @@ class App(Tk):
         match self.prev:
             case 'draw':
                 self.unbind_draw()
-            case 'edit':
-                self.unbind_edit()
+            case 'rect':
+                self.unbind_rect()
             
         match self.tool.get():
             case 'draw':
                 self.bind_draw()
-            case 'edit':
-                self.bind_edit()
+            case 'rect':
+                self.bind_rect()
 
         self.prev = self.tool.get()
 
-    def set_bc_type(self, event):
-        selection = self.combobox.get()
-
-        match selection:
-            case 'Жесткие':
-                self.bc_type.set('natural')
-            case 'Мягкие':
-                self.bc_type.set('clamped')
-            case 'Циклические':
-                self.bc_type.set('periodic')
-            case 'Ациклические':
-                self.bc_type.set('not-a-knot')
-
-        if self.id_curve is not None:
-            coords = self.canvas.coords(self.id_curve)
-            coords = np.reshape(coords, (len(coords) // 2, 2))
-
-            self.draw_spline(coords)
-
-    def draw_spline(self, coords):
-        X, Y = map(list, zip(*coords))
-        l, r = min(X), max(X)
-
-        if len(X) > 2:
-            if self.bc_type.get() == 'periodic':
-                X.append(2 * X[-1] - X[-2])
-                Y.append(Y[0])
-
-            sp = interpolate.CubicSpline(X, Y, bc_type=self.bc_type.get())
-
-            section = np.linspace(l, r, 200)
-            values = sp(section)
-
-            spline_coords = np.vstack([section, values]).T
-
-            self.canvas.coords(self.id_spline, *np.concatenate(spline_coords))
-
     def bind_draw(self):
-        if self.id_curve is None:
-            coords = None
-        else:
-            coords = self.canvas.coords(self.id_curve)
-            coords = list(map(list, zip(coords[::2], coords[1::2])))
+        x0, y0 = None, None
 
         def put_point(event):
-            nonlocal coords
+            nonlocal x0, y0
 
             x, y = event.x, event.y
 
-            if self.id_curve is None:
-                coords = [[x, y]]
-
-                self.id_curve = self.canvas.create_line(
-                    x, y, x, y,
-                    fill='black',
-                    dash=(7, 7), 
-                    width=3,
-                )
-
-                self.id_spline = self.canvas.create_line(
-                    x, y, x, y,
-                    fill='red',
-                    width=3,
-                )
-
-            i = bisect.bisect(coords, [x, y])
-
-            if coords[i - 1][0] == x:
-                coords[i - 1][1] = y
+            if (x0, y0) == (None, None):
+                x0, y0 = x, y
             else:
-                coords.insert(i, [x, y])
+                self.canvas.delete('line')
 
-            if len(coords) > 1:
-                self.canvas.coords(self.id_curve, *np.concatenate(coords))
+                self.canvas.create_line(
+                    x0, y0,
+                    x, y,
+                    fill='black',
+                    width=2,
+                    tag='section'
+                )
 
-            self.draw_spline(coords)
+                x0, y0 = None, None
 
-            self.canvas.create_circle(
-                x, y, radius=5,
-                fill='#007FFF',
-                tag='point',
-                outline='black'
-            )
+        def draw_line(event):
+            nonlocal x0, y0
+
+            x, y = event.x, event.y
+
+            if (x0, y0) != (None, None):
+                self.canvas.delete('line')
+
+                self.canvas.create_line(
+                    x0, y0,
+                    x, y,
+                    fill='red',
+                    width=2,
+                    dash=5,
+                    tag='line'
+                )
         
         self.canvas.bind('<Button-1>', put_point)
+        self.canvas.bind('<Motion>', draw_line)
 
     def unbind_draw(self):
+        self.canvas.delete('line')
         self.canvas.unbind('<Button-1>')
+        self.canvas.unbind('<Motion>')
+
+    def rand(self):
+        x0, x = [randint(0, self.width) for _ in range(2)]
+        y0, y = [randint(0, self.height) for _ in range(2)]
+
+        self.canvas.create_line(
+            x0, y0,
+            x, y,
+            fill='black',
+            width=2,
+            tag='section'
+        )        
 
     def clear(self):
-        self.canvas.delete(
-            self.id_curve, 
-            self.id_spline,
-            'point'
-        )
-        self.id_curve = None
-        self.id_spline = None
+        self.canvas.delete('section')
 
-    def bind_edit(self):
-        x0, y0 = [None] * 2
-        point = None
-        coords = self.canvas.coords(self.id_curve)
-        coords = np.reshape(coords, (len(coords) // 2, 2))
-        points = list(self.canvas.find_withtag('point'))
-        points.sort(key=lambda id: self.canvas.center(id))
+    def bind_rect(self):  
+        x0, y0 = None, None
+        id_rect = None
 
-        def start_drag(event):
-            nonlocal x0, y0, point
+        def start_draw(event):
+            nonlocal x0, y0, id_rect
 
-            x0, y0 = event.x, event.y
-            point = self.canvas.find_withtag(CURRENT)[0]
+            self.canvas.delete('rect')
 
-        def drag(event):
-            nonlocal x0, y0, coords
-
-            dx, dy = event.x - x0, event.y - y0
-            x0, y0 = event.x, event.y
-
-            idx = points.index(point)
-
-            if (idx + 1 < len(coords) and coords[idx, 0] + dx >= coords[idx + 1, 0] or
-                idx > 0 and coords[idx, 0] + dx <= coords[idx - 1, 0]):
+            if id_rect is not None:
                 return
 
-            coords[idx] += (dx, dy)
+            x0, y0 = event.x, event.y
 
-            self.canvas.coords(self.id_curve, *np.concatenate(coords))
-            self.canvas.move(point, dx, dy)
+            id_rect = self.canvas.create_rectangle(
+                x0, y0, x0, y0,
+                outline='red',
+                width=2,
+                dash=5
+            )
 
-            self.draw_spline(coords)
+        def draw_rectangle(event):
+            if id_rect is None:
+                return
+            
+            x, y = event.x, event.y     
 
-        def focus(event):
-            point = self.canvas.find_withtag(CURRENT)[0]   
-            self.canvas.itemconfig(point, fill='#E7F3FF')
+            self.canvas.coords(id_rect, x0, y0, x, y)
 
-        def unfocus(event):
-            point = self.canvas.find_withtag(CURRENT)[0]   
-            self.canvas.itemconfig(point, fill='#007FFF')
-        
-        self.canvas.tag_bind('point', '<Button-1>', start_drag)
-        self.canvas.tag_bind('point', '<B1-Motion>', drag)
-        self.canvas.tag_bind('point', '<Enter>', focus)
-        self.canvas.tag_bind('point', '<Leave>', unfocus)
+        def finish_draw(event):
+            nonlocal x0, y0, id_rect
 
-    def unbind_edit(self):
-        self.canvas.tag_unbind('point', '<Button-1>')
-        self.canvas.tag_unbind('point', '<B1-Motion>')
-        self.canvas.tag_unbind('point', '<Enter>')
-        self.canvas.tag_unbind('point', '<Leave>')
+            x, y = event.x, event.y
+
+            if id_rect is None or (x0, y0) == (x, y):
+                return      
+
+            self.canvas.create_rectangle(
+                x0, y0, x, y, 
+                width=2,
+                outline='black',
+                fill='black',
+                stipple='gray12',
+                tag='rect'
+            )  
+
+            self.canvas.delete(id_rect)   
+            
+            x0, y0 = None, None
+            id_rect = None
+                 
+        self.canvas.bind('<Button-1>', start_draw)
+        self.canvas.bind('<Motion>', draw_rectangle)
+        self.canvas.bind('<ButtonRelease-1>', finish_draw)
+
+    def unbind_rect(self):
+        self.canvas.delete('rect')
+        self.canvas.unbind('<Button-1>')
+        self.canvas.unbind('<Motion>')
+        self.canvas.unbind('<ButtonRelease-1>')
