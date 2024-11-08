@@ -160,44 +160,39 @@ class App(Tk):
         )        
 
     def clear(self):
-        self.canvas.delete('section')
+        self.canvas.delete('section', 'line', 'rect', 'selected')
 
     def bind_rect(self):  
         x0, y0 = None, None
-        id_rect = None
 
         def start_draw(event):
-            nonlocal x0, y0, id_rect
+            nonlocal x0, y0
 
             self.canvas.delete('rect')
 
-            if id_rect is not None:
-                return
+            if (x0, y0) == (None, None):
+                x0, y0 = event.x, event.y
 
-            x0, y0 = event.x, event.y
-
-            id_rect = self.canvas.create_rectangle(
-                x0, y0, x0, y0,
-                outline='red',
-                width=2,
-                dash=5
-            )
+                self.canvas.create_rectangle(
+                    x0, y0, x0, y0,
+                    outline='red',
+                    width=2,
+                    dash=5,
+                    tag='rect'
+                )
+            else:
+                finish_draw(event)
 
         def draw_rectangle(event):
-            if id_rect is None:
-                return
-            
-            x, y = event.x, event.y     
+            x, y = event.x, event.y   
 
-            self.canvas.coords(id_rect, x0, y0, x, y)
+            if (x0, y0) != (None, None):  
+                self.canvas.coords('rect', x0, y0, x, y)
 
         def finish_draw(event):
-            nonlocal x0, y0, id_rect
+            nonlocal x0, y0
 
-            x, y = event.x, event.y
-
-            if id_rect is None or (x0, y0) == (x, y):
-                return      
+            x, y = event.x, event.y  
 
             self.canvas.create_rectangle(
                 x0, y0, x, y, 
@@ -207,18 +202,119 @@ class App(Tk):
                 stipple='gray12',
                 tag='rect'
             )  
-
-            self.canvas.delete(id_rect)   
             
             x0, y0 = None, None
-            id_rect = None
+
+            self.cut_off()
                  
         self.canvas.bind('<Button-1>', start_draw)
         self.canvas.bind('<Motion>', draw_rectangle)
-        self.canvas.bind('<ButtonRelease-1>', finish_draw)
 
     def unbind_rect(self):
-        self.canvas.delete('rect')
+        self.canvas.delete('rect', 'selected')
         self.canvas.unbind('<Button-1>')
         self.canvas.unbind('<Motion>')
-        self.canvas.unbind('<ButtonRelease-1>')
+
+    def cut_off(self):
+        self.canvas.delete('selected')
+
+        sections = self.canvas.find_withtag('section')
+        rect = self.canvas.find_withtag('rect')
+
+        x_min, y_min, x_max, y_max = self.canvas.bbox(rect)
+
+        def get_code(x, y):
+            code = 0
+
+            if x < x_min:
+                code |= 1 
+            elif x > x_max:
+                code |= 2 
+            if y < y_min:
+                code |= 4 
+            elif y > y_max:
+                code |= 8
+
+            return code
+
+        for section in sections:
+            x1, y1, x2, y2 = self.canvas.coords(section)
+            
+            code1 = get_code(x1, y1)
+            code2 = get_code(x2, y2)
+            accept = False
+
+            while True: 
+        
+                # If both endpoints lie within rectangle 
+                if code1 == 0 and code2 == 0: 
+                    accept = True
+                    break
+        
+                # If both endpoints are outside rectangle 
+                elif (code1 & code2) != 0: 
+                    break
+        
+                # Some segment lies within the rectangle 
+                else: 
+        
+                    # Line Needs clipping 
+                    # At least one of the points is outside,  
+                    # select it 
+                    x = 1.0
+                    y = 1.0
+                    if code1 != 0: 
+                        code_out = code1 
+                    else: 
+                        code_out = code2 
+        
+                    # Find intersection point 
+                    # using formulas y = y1 + slope * (x - x1),  
+                    # x = x1 + (1 / slope) * (y - y1) 
+                    if code_out & 8: 
+                        
+                        # point is above the clip rectangle 
+                        x = x1 + ((x2 - x1) / (y2 - y1)) * (y_max - y1) 
+                        y = y_max 
+        
+                    elif code_out & 4: 
+                        
+                        # point is below the clip rectangle 
+                        x = x1 + ((x2 - x1) / (y2 - y1)) * (y_min - y1) 
+                        y = y_min 
+        
+                    elif code_out & 2: 
+                        
+                        # point is to the right of the clip rectangle 
+                        y = y1 + ((y2 - y1) / (x2 - x1)) * (x_max - x1) 
+                        x = x_max 
+        
+                    elif code_out & 1: 
+                        
+                        # point is to the left of the clip rectangle 
+                        y = y1 + ((y2 - y1) / (x2 - x1)) * (x_min - x1)  
+                        x = x_min 
+        
+                    # Now intersection point x, y is found 
+                    # We replace point outside clipping rectangle 
+                    # by intersection point 
+                    if code_out == code1: 
+                        x1 = x 
+                        y1 = y 
+                        code1 = get_code(x1, y1) 
+        
+                    else: 
+                        x2 = x 
+                        y2 = y 
+                        code2 = get_code(x2, y2) 
+                    
+            if accept: 
+                self.canvas.create_line(
+                    x1, y1,
+                    x2, y2,
+                    fill='red',
+                    width=3,
+                    tag='selected'
+                )
+                    
+                
